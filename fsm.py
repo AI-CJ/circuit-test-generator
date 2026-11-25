@@ -93,7 +93,8 @@ def simulate(machine: Machine, inputs: str) -> Iterator[tuple[str, str, Transiti
         state = edge.next_state
 
 
-def run_sequences(machine: Machine, sequences: list[Sequence]) -> None:
+def run_sequences(machine: Machine, sequences: list[Sequence]) -> set[tuple[str, str]]:
+    traversed = set()
     for number, sequence in enumerate(sequences, 1):
         outputs = []
         state = machine.reset
@@ -104,16 +105,53 @@ def run_sequences(machine: Machine, sequences: list[Sequence]) -> None:
                     f"sequence {number}, step {step}: state={source}, input={bit}, "
                     f"expected={sequence.expected[step - 1]}, actual={output}"
                 )
+            traversed.add((source, bit))
             outputs.append(output)
             state = edge.next_state
         print(f"sequence {number}: outputs={''.join(outputs)!r}, final={state}")
+    return traversed
+
+
+def reachable_states(machine: Machine) -> set[str]:
+    reached = {machine.reset}
+    pending = [machine.reset]
+    while pending:
+        for edge in machine.transitions[pending.pop()].values():
+            if edge.next_state not in reached:
+                reached.add(edge.next_state)
+                pending.append(edge.next_state)
+    return reached
+
+
+def coverage_report(machine: Machine, traversed: set[tuple[str, str]]) -> str:
+    reachable = reachable_states(machine)
+    possible = {(state, bit) for state in reachable for bit in machine.transitions[state]}
+    visited = {machine.reset}
+    for state, bit in traversed:
+        visited.add(machine.transitions[state][bit].next_state)
+
+    lines = [
+        f"States visited: {len(visited)}/{len(reachable)} reachable",
+        f"Transitions exercised: {len(traversed)}/{len(possible)} reachable",
+    ]
+    for state in sorted(machine.transitions.keys() - reachable):
+        lines.append(f"Unreachable from reset: {state}")
+    for state in sorted(reachable - visited):
+        lines.append(f"Unvisited reachable state: {state}")
+    for state, bit in sorted(possible - traversed):
+        edge = machine.transitions[state][bit]
+        lines.append(f"Missed: {state} -- input {bit}, output {edge.output} --> {edge.next_state}")
+    return "\n".join(lines)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("spec", type=Path)
     parser.add_argument("--sequences", type=Path, help="simulate a JSON array of test cases")
+    parser.add_argument("--coverage", action="store_true", help="report coverage of the supplied sequences")
     args = parser.parse_args()
+    if args.coverage and args.sequences is None:
+        parser.error("--coverage requires --sequences")
     try:
         machine = load_machine(args.spec)
     except (OSError, ValueError) as exc:
@@ -122,7 +160,9 @@ def main():
     print(f"{len(machine.transitions)} states, {edges} transitions, reset={machine.reset}")
     if args.sequences is not None:
         try:
-            run_sequences(machine, load_sequences(args.sequences))
+            traversed = run_sequences(machine, load_sequences(args.sequences))
+            if args.coverage:
+                print(coverage_report(machine, traversed))
         except (OSError, ValueError) as exc:
             parser.exit(1, f"{args.sequences}: {exc}\n")
 

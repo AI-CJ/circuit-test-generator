@@ -28,3 +28,18 @@ the reference outputs. An empty string exercises reset alone.
 The sample produces `11` and ends in `odd` for the first case. The second produces
 `110` and ends in `even`. A mismatch stops the command with exit status 1 and
 reports the case, one-based step, source state, input, expected bit and actual bit.
+
+## Measure coverage
+
+```sh
+python fsm.py examples/parity.json --sequences examples/parity-cases.json --coverage
+```
+
+The sample visits both reachable states and exercises 3 of 4 reachable transitions.
+It misses input 0 in state `even`, which outputs 0 and stays in `even`.
+
+The report counts each distinct (source state, input bit) pair once across all
+cases. Reset counts as a visit even for an empty input string. A traversal of
+the reference table determines which states any input sequence can reach from
+reset. The report lists unreachable states separately and excludes their edges
+from the denominator. Coverage is printed after all expected outputs pass.
