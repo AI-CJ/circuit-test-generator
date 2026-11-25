@@ -62,3 +62,34 @@ this produces six cases covering all six transitions. Input `111` produces
 finds a shortest path from reset to each source state, exploring input 0 first
 to break ties. Appending the target input gives a shortest case for that edge.
 Different cases can repeat prefixes, so the combined suite can contain redundant steps.
+
+## Run the cases in Logisim Evolution
+
+Install Java 21 and download the `logisim-evolution-5.0.0-all.jar` asset from
+the [5.0.0 release](https://github.com/logisim-evolution/logisim-evolution/releases/tag/v5.0.0).
+From the repository root, run both examples with the path to your JAR:
+
+```sh
+python tests/check_logisim.py /path/to/logisim-evolution-5.0.0-all.jar
+```
+
+On Linux without a desktop, prefix the command with `xvfb-run -a`. The check
+generates fresh cases, exports them, and reads the simulator's pass/fail counts.
+Parity covers 4/4 reachable transitions in 16 vector rows. The three-ones
+detector covers 6/6 in 30 rows. Both circuits are in `examples/machines.circ`.
+
+To inspect the vectors yourself, use the `parity-full.json` file generated above:
+
+```sh
+python fsm.py examples/parity.json --sequences parity-full.json --logisim parity.txt
+java -jar /path/to/logisim-evolution-5.0.0-all.jar --test-vector parity parity.txt examples/machines.circ
+```
+
+To test another circuit, expose four single-bit pins named `Bit`, `Clock`,
+`Reset`, and `Result`. Each case starts with an active-high asynchronous reset.
+The circuit must enter the state named by the specification's `reset` field.
+For each input, the low-clock row checks the Mealy output. The next row holds
+the input steady and raises the clock so the flip-flops store the next state.
+`<DC>` skips the output check during reset and on the rising edge. Each case
+has its own `<set>` number, and `<seq>` orders its rows. The export checks
+observable output bits. It assumes one rising-edge clock and settled signals.

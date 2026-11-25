@@ -12,3 +12,12 @@ jobs:
           python-version: '3.12'
       - run: python -m unittest discover -s tests -v
       - run: python fsm.py examples/parity.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check generated suites in Logisim Evolution
+        run: |
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/logisim.jar" https://github.com/logisim-evolution/logisim-evolution/releases/download/v5.0.0/logisim-evolution-5.0.0-all.jar
+          echo "6b368e894742c04cc83aa9830f869bcab0190ede4df43ad6fecdb89b3a23a41c  $RUNNER_TEMP/logisim.jar" | sha256sum --check
+          xvfb-run -a python tests/check_logisim.py "$RUNNER_TEMP/logisim.jar"

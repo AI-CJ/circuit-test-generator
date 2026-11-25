@@ -147,6 +147,16 @@ def generate_cases(machine: Machine, traversed: set[tuple[str, str]]) -> Iterato
             yield Sequence(inputs, expected)
 
 
+def logisim_rows(machine: Machine, sequences: list[Sequence]) -> Iterator[str]:
+    """Check the Mealy output before the rising edge advances the state."""
+    yield "Bit Clock Reset Result <set> <seq>"
+    for case, sequence in enumerate(sequences, 1):
+        yield f"0 0 1 <DC> {case} 1"
+        for step, (_, bit, edge) in enumerate(simulate(machine, sequence.inputs), 1):
+            yield f"{bit} 0 0 {edge.output} {case} {2 * step}"
+            yield f"{bit} 1 0 <DC> {case} {2 * step + 1}"
+
+
 def coverage_report(machine: Machine, traversed: set[tuple[str, str]]) -> str:
     reachable = reachable_states(machine)
     possible = {(state, bit) for state in reachable for bit in machine.transitions[state]}
@@ -173,9 +183,14 @@ def main():
     parser.add_argument("spec", type=Path)
     parser.add_argument("--sequences", type=Path, help="simulate a JSON array of test cases")
     parser.add_argument("--coverage", action="store_true", help="report coverage of the supplied sequences")
-    parser.add_argument("--generate", type=Path, metavar="FILE",
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--generate", type=Path, metavar="FILE",
                         help="write original and generated cases to a new JSON file")
+    output.add_argument("--logisim", type=Path, metavar="FILE",
+                        help="export the supplied sequences as new Logisim Evolution test vectors")
     args = parser.parse_args()
+    if args.logisim is not None and args.sequences is None:
+        parser.error("--logisim requires --sequences")
     if args.coverage and args.sequences is None:
         parser.error("--coverage requires --sequences")
     try:
@@ -194,6 +209,14 @@ def main():
                 print(coverage_report(machine, traversed))
         except (OSError, ValueError) as exc:
             parser.exit(1, f"{args.sequences}: {exc}\n")
+    if args.logisim is not None:
+        try:
+            with args.logisim.open("x", encoding="utf-8") as out:
+                for row in logisim_rows(machine, sequences):
+                    print(row, file=out)
+        except OSError as exc:
+            parser.exit(1, f"{args.logisim}: {exc}\n")
+        print(f"Wrote test vectors to {args.logisim}")
     if args.generate is not None:
         additions = list(generate_cases(machine, traversed))
         cases = [asdict(case) if case.expected is not None else {"inputs": case.inputs}
