@@ -2,8 +2,9 @@
 
 import argparse
 import json
+from collections import deque
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
@@ -112,15 +113,38 @@ def run_sequences(machine: Machine, sequences: list[Sequence]) -> set[tuple[str,
     return traversed
 
 
-def reachable_states(machine: Machine) -> set[str]:
-    reached = {machine.reset}
-    pending = [machine.reset]
+def search_from_reset(machine: Machine) -> dict[str, tuple[str, str] | None]:
+    """Record the first (source state, input) that reaches each state."""
+    parents = {machine.reset: None}
+    pending = deque([machine.reset])
     while pending:
-        for edge in machine.transitions[pending.pop()].values():
-            if edge.next_state not in reached:
-                reached.add(edge.next_state)
-                pending.append(edge.next_state)
-    return reached
+        source = pending.popleft()
+        for bit in ("0", "1"):
+            target = machine.transitions[source][bit].next_state
+            if target not in parents:
+                parents[target] = (source, bit)
+                pending.append(target)
+    return parents
+
+
+def reachable_states(machine: Machine) -> set[str]:
+    return set(search_from_reset(machine))
+
+
+def generate_cases(machine: Machine, traversed: set[tuple[str, str]]) -> Iterator[Sequence]:
+    parents = search_from_reset(machine)
+    for source in parents:
+        for bit in ("0", "1"):
+            if (source, bit) in traversed:
+                continue
+            path = [bit]
+            state = source
+            while parents[state] is not None:
+                state, incoming = parents[state]
+                path.append(incoming)
+            inputs = "".join(reversed(path))
+            expected = "".join(str(edge.output) for _, _, edge in simulate(machine, inputs))
+            yield Sequence(inputs, expected)
 
 
 def coverage_report(machine: Machine, traversed: set[tuple[str, str]]) -> str:
@@ -149,6 +173,8 @@ def main():
     parser.add_argument("spec", type=Path)
     parser.add_argument("--sequences", type=Path, help="simulate a JSON array of test cases")
     parser.add_argument("--coverage", action="store_true", help="report coverage of the supplied sequences")
+    parser.add_argument("--generate", type=Path, metavar="FILE",
+                        help="write original and generated cases to a new JSON file")
     args = parser.parse_args()
     if args.coverage and args.sequences is None:
         parser.error("--coverage requires --sequences")
@@ -158,13 +184,27 @@ def main():
         parser.exit(1, f"{args.spec}: {exc}\n")
     edges = sum(len(row) for row in machine.transitions.values())
     print(f"{len(machine.transitions)} states, {edges} transitions, reset={machine.reset}")
+    sequences = []
+    traversed = set()
     if args.sequences is not None:
         try:
-            traversed = run_sequences(machine, load_sequences(args.sequences))
+            sequences = load_sequences(args.sequences)
+            traversed = run_sequences(machine, sequences)
             if args.coverage:
                 print(coverage_report(machine, traversed))
         except (OSError, ValueError) as exc:
             parser.exit(1, f"{args.sequences}: {exc}\n")
+    if args.generate is not None:
+        additions = list(generate_cases(machine, traversed))
+        cases = [asdict(case) if case.expected is not None else {"inputs": case.inputs}
+                 for case in sequences + additions]
+        try:
+            with args.generate.open("x", encoding="utf-8") as out:
+                json.dump(cases, out, indent=2)
+                out.write("\n")
+        except OSError as exc:
+            parser.exit(1, f"{args.generate}: {exc}\n")
+        print(f"Added {len(additions)} cases; wrote {len(cases)} to {args.generate}")
 
 
 if __name__ == "__main__":

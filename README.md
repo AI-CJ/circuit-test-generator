@@ -43,3 +43,22 @@ cases. Reset counts as a visit even for an empty input string. A traversal of
 the reference table determines which states any input sequence can reach from
 reset. The report lists unreachable states separately and excludes their edges
 from the denominator. Coverage is printed after all expected outputs pass.
+
+## Generate cases for missed transitions
+
+```sh
+python fsm.py examples/parity.json --sequences examples/parity-cases.json --generate parity-full.json
+python fsm.py examples/parity.json --sequences parity-full.json --coverage
+```
+
+The new JSON file contains the original cases followed by one case per missed
+reachable transition. The parity example adds input `0` with expected output
+`0`. Replaying the file covers 4/4 reachable transitions. Choose a fresh output
+filename each time.
+
+Omit `--sequences` to generate a suite from scratch. For `examples/three-ones.json`,
+this produces six cases covering all six transitions. Input `111` produces
+`001`: the circuit signals the third consecutive one. Breadth-first search
+finds a shortest path from reset to each source state, exploring input 0 first
+to break ties. Appending the target input gives a shortest case for that edge.
+Different cases can repeat prefixes, so the combined suite can contain redundant steps.

@@ -1,0 +1,17 @@
+{
+  "reset": "none",
+  "states": {
+    "none": {
+      "0": {"next": "none", "output": 0},
+      "1": {"next": "one", "output": 0}
+    },
+    "one": {
+      "0": {"next": "none", "output": 0},
+      "1": {"next": "two", "output": 0}
+    },
+    "two": {
+      "0": {"next": "none", "output": 0},
+      "1": {"next": "two", "output": 1}
+    }
+  }
+}
